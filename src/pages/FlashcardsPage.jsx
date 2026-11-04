@@ -11,7 +11,7 @@ import {
   LoaderCircle,
 } from "lucide-react";
 
-const API_URL = "http://localhost:5000/api/flashcards";
+const API_URL = `${import.meta.env.VITE_API_URL}/api/flashcards`;
 const STORAGE_KEY = "understandx_learning_history";
 
 export default function FlashcardsPage() {

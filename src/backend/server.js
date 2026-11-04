@@ -1,4 +1,3 @@
-
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -8,18 +7,29 @@ require("dotenv").config();
 
 const app = express();
 
+// =====================================
+// CORS CONFIGURATION FOR LOCAL + RENDER
+// =====================================
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:3000",
-    ],
+    origin: allowedOrigins,
+    credentials: true
   })
 );
 
 app.use(express.json({ limit: "2mb" }));
 
-// Check required environment variables
+// =====================================
+// CHECK REQUIRED ENVIRONMENT VARIABLES
+// =====================================
+
 if (!process.env.GEMINI_API_KEY) {
   console.error("GEMINI_API_KEY is missing from .env");
   process.exit(1);
@@ -30,12 +40,16 @@ if (!process.env.MONGODB_URI) {
   process.exit(1);
 }
 
-// Gemini AI
+// =====================================
+// GEMINI AI CONFIGURATION
+// =====================================
+
 const genAI = new GoogleGenerativeAI(
   process.env.GEMINI_API_KEY
 );
 
 const MODEL_NAME = "gemini-3.5-flash-lite";
+
 async function generateAIResponse(prompt) {
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
@@ -45,6 +59,7 @@ async function generateAIResponse(prompt) {
     try {
       const result = await model.generateContent(prompt);
       return result.response.text();
+
     } catch (error) {
       console.error(
         `Gemini attempt ${attempt} failed:`,
@@ -56,12 +71,10 @@ async function generateAIResponse(prompt) {
           error.message || ""
         );
 
-      // Do not retry errors that are not temporary.
       if (!temporaryError || attempt === 2) {
         throw error;
       }
 
-      // Wait briefly before one retry.
       await new Promise((resolve) =>
         setTimeout(resolve, 1000)
       );
@@ -71,13 +84,17 @@ async function generateAIResponse(prompt) {
   throw new Error("AI is temporarily unavailable.");
 }
 
+// =====================================
+// FILE UPLOAD CONFIGURATION
+// =====================================
 
-// File upload configuration
 const upload = multer({
   storage: multer.memoryStorage(),
+
   limits: {
     fileSize: 25 * 1024 * 1024,
   },
+
   fileFilter: (req, file, callback) => {
     const allowedTypes = [
       "image/png",
@@ -95,15 +112,22 @@ const upload = multer({
   },
 });
 
-// Home route
+// =====================================
+// HOME ROUTE
+// =====================================
+
 app.get("/", (req, res) => {
   res.send("UNDERSTANDX backend is running!");
 });
 
-// Health check
+// =====================================
+// HEALTH CHECK
+// =====================================
+
 app.get("/api/health", (req, res) => {
   res.json({
     server: "connected",
+
     database:
       mongoose.connection.readyState === 1
         ? "connected"
@@ -111,7 +135,10 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Generate a learning hint
+// =====================================
+// GENERATE LEARNING HINT
+// =====================================
+
 app.post("/api/hint", async (req, res) => {
   try {
     const { question } = req.body;
@@ -135,16 +162,22 @@ Use simple student-friendly language.
 `;
 
     const hint = await generateAIResponse(prompt);
+
     res.json({ hint });
+
   } catch (error) {
     console.error("Hint error:", error.message);
+
     res.status(503).json({
       error: "AI hint is temporarily unavailable. Please try again.",
     });
   }
 });
 
-// Generate a full answer
+// =====================================
+// GENERATE FULL ANSWER
+// =====================================
+
 app.post("/api/answer", async (req, res) => {
   try {
     const { question } = req.body;
@@ -167,22 +200,26 @@ Point out uncertainty instead of inventing facts.
 `;
 
     const answer = await generateAIResponse(prompt);
+
     res.json({ answer });
+
   } catch (error) {
     console.error("Answer error:", error.message);
+
     res.status(503).json({
       error: "AI answer is temporarily unavailable. Please try again.",
     });
   }
 });
 
-// Analyze typed text
+// =====================================
+// GENERATE FLASHCARDS
+// =====================================
 
 app.post("/api/flashcards", async (req, res) => {
   try {
     const { subject, topic, difficulty, count } = req.body;
 
-    // Validate the input
     if (
       typeof subject !== "string" ||
       typeof topic !== "string" ||
@@ -233,16 +270,13 @@ or code fences. Follow this exact structure:
 ]
 `;
 
-    // Uses the existing Gemini helper in server.js
     let raw = await generateAIResponse(prompt);
 
-    // Remove Markdown code fences if Gemini adds them
     raw = raw
       .trim()
       .replace(/^```(?:json)?\s*/i, "")
       .replace(/\s*```$/i, "");
 
-    // Extract the JSON array
     const start = raw.indexOf("[");
     const end = raw.lastIndexOf("]");
 
@@ -270,6 +304,7 @@ or code fences. Follow this exact structure:
     }
 
     return res.json({ cards });
+
   } catch (error) {
     console.error("Flashcard generation error:", error.message);
 
@@ -278,6 +313,10 @@ or code fences. Follow this exact structure:
     });
   }
 });
+
+// =====================================
+// VERIFY TYPED TEXT
+// =====================================
 
 app.post("/api/verify-text", async (req, res) => {
   try {
@@ -318,18 +357,26 @@ Use simple language.
 `;
 
     const report = await generateAIResponse(prompt);
+
     res.json({ report });
+
   } catch (error) {
     console.error("Text verification error:", error.message);
+
     res.status(503).json({
       error: "Text analysis is temporarily unavailable. Please try again.",
     });
   }
 });
 
-// Analyze an uploaded PDF, PNG, or JPG file
+// =====================================
+// VERIFY UPLOADED DOCUMENT
+// =====================================
+
 app.post("/api/verify-document", (req, res) => {
+
   upload.single("document")(req, res, async (uploadError) => {
+
     if (uploadError) {
       return res.status(400).json({
         error: uploadError.message || "File upload failed.",
@@ -388,6 +435,7 @@ Use simple, student-friendly language.
         filename: req.file.originalname,
         report,
       });
+
     } catch (error) {
       console.error(
         "Document verification error:",
@@ -399,12 +447,17 @@ Use simple, student-friendly language.
           "AI could not analyze this file. Check the file and try again.",
       });
     }
+
   });
 });
 
-// Start server after MongoDB connects
+// =====================================
+// START SERVER AFTER MONGODB CONNECTS
+// =====================================
+
 async function startServer() {
   try {
+
     await mongoose.connect(process.env.MONGODB_URI);
 
     console.log("MongoDB connected successfully!");
@@ -413,9 +466,10 @@ async function startServer() {
 
     app.listen(PORT, () => {
       console.log(
-        `UNDERSTANDX server running at http://localhost:${PORT}`
+        `UNDERSTANDX server running on port ${PORT}`
       );
     });
+
   } catch (error) {
     console.error("Startup error:", error.message);
     process.exit(1);
